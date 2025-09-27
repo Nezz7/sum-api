@@ -30,7 +30,7 @@ lint:
 
 curl: 
 	curl http://localhost:8080/sum?a=5\&b=10
-	echo "\n"
+	@echo "\n"
 	curl http://localhost:8080/sum?a=5
-	echo "\n"
+	@echo "\n"
 	curl http://localhost:8080/sum?a=9223372036854775807\&b=100
