@@ -28,7 +28,7 @@ jobs:
       run: make test
 
     - name: Test Cov 
-      run: make cover
+      run: make coverage
 
     - name: SAST
       uses: securego/gosec@master
