@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -50,14 +51,19 @@ func Add(a, b int64) (int64, error) {
 }
 
 func sumHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received request:", r.Method, r.URL.Path, r.URL.RawQuery)
+	// Create logger with request context
+	logger := slog.With(
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+	)
+
+	logger.Info("request received")
 
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
+		logger.Warn("method not allowed")
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		if err := json.NewEncoder(w).Encode(SumResponse{Error: "Method not allowed"}); err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
-		}
+		json.NewEncoder(w).Encode(SumResponse{Error: "Method not allowed"})
 		return
 	}
 
@@ -65,59 +71,86 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 	bStr := r.URL.Query().Get("b")
 
 	if aStr == "" || bStr == "" {
+		logger.Warn("missing parameters")
 		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(SumResponse{Error: "Parameters 'a' and 'b' are required"}); err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
-		}
+		json.NewEncoder(w).Encode(SumResponse{Error: "Parameters 'a' and 'b' are required"})
 		return
 	}
 
 	a, err := strconv.ParseInt(aStr, 10, 64)
 	if err != nil {
-		log.Println("Error parsing 'a':", err)
+		logger.Warn("invalid parameter",
+			slog.String("param", "a"),
+			slog.String("value", aStr),
+		)
 		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'a'"}); err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
-		}
+		json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'a'"})
 		return
 	}
 
 	b, err := strconv.ParseInt(bStr, 10, 64)
 	if err != nil {
-		log.Println("Error parsing 'b':", err)
+		logger.Warn("invalid parameter",
+			slog.String("param", "b"),
+			slog.String("value", bStr),
+		)
 		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'b'"}); err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
-		}
-		if err := json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'b'"}); err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
-		}
+		json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'b'"})
 		return
 	}
+
+	logger = logger.With(
+		slog.Int64("a", a),
+		slog.Int64("b", b),
+	)
 
 	result, err := Add(a, b)
 	if err != nil {
+		logger.Warn("operation failed",
+			slog.String("error", err.Error()),
+		)
 		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(SumResponse{Error: err.Error()}); err != nil {
-			log.Printf("Error encoding JSON response: %v", err)
-		}
+		json.NewEncoder(w).Encode(SumResponse{Error: err.Error()})
 		return
 	}
 
-	response := SumResponse{Result: result}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Error encoding JSON response: %v", err)
-	}
+	logger.Info("sum calculated",
+		slog.Int64("result", result),
+	)
+	json.NewEncoder(w).Encode(SumResponse{Result: result})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-		log.Printf("Error encoding JSON response: %v", err)
-	}
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func main() {
+	// Get log level from environment variable (default: INFO)
+	logLevel := slog.LevelInfo
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		switch level {
+		case "DEBUG":
+			logLevel = slog.LevelDebug
+		case "INFO":
+			logLevel = slog.LevelInfo
+		case "WARN":
+			logLevel = slog.LevelWarn
+		case "ERROR":
+			logLevel = slog.LevelError
+		}
+	}
+	// Use text format for local development, JSON for production
+	var handler slog.Handler
+	if os.Getenv("ENVIRONMENT") == "local" {
+		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	} else {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	}
+
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
 	http.HandleFunc("/sum", sumHandler)
 	http.HandleFunc("/health", healthHandler)
 
@@ -130,6 +163,13 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Sum-API server is starting on %s\n", addr)
-	log.Fatal(server.ListenAndServe())
+	slog.Info("server starting",
+		slog.String("address", addr),
+	)
+	if err := server.ListenAndServe(); err != nil {
+		slog.Error("server failed",
+			slog.String("error", err.Error()),
+		)
+		os.Exit(1)
+	}
 }
