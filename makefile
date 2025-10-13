@@ -1,7 +1,7 @@
 .PHONY: run build test clean
 
 run: 
-	go run main.go
+	ENVIRONMENT=local go run main.go
 
 build: 
 	go build -o bin/app main.go
@@ -9,6 +9,9 @@ build:
 test: 
 	go test  -bench=. ./... -v
 
+up: 
+	docker-compose up -d --build
+	
 coverage: 
 	go test -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
