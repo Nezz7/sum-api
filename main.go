@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type SumResponse struct {
@@ -16,28 +20,30 @@ type SumResponse struct {
 	Error  string `json:"error,omitempty"`
 }
 
-func fib(n int) int {
-	if n == 0 {
-		return 0
-	}
-	if n == 1 {
-		return 1
-	}
-	return fib(n-1) + fib(n-2)
-}
+var (
+	registry = prometheus.NewRegistry()
 
-func OptimizedFib(n int) int {
-	if n == 0 {
-		return 0
-	}
-	a := 0
-	b := 1
-	for i := 2; i <= n; i++ {
-		tmp := a + b
-		a = b
-		b = tmp
-	}
-	return b
+	httpRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "endpoint", "status"},
+	)
+
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "HTTP request duration in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "endpoint"},
+	)
+)
+
+func init() {
+	registry.MustRegister(httpRequestsTotal)
+	registry.MustRegister(httpRequestDuration)
 }
 
 func Add(a, b int64) (int64, error) {
@@ -51,10 +57,21 @@ func Add(a, b int64) (int64, error) {
 }
 
 func sumHandler(w http.ResponseWriter, r *http.Request) {
+	// Start timer for request duration
+	start := time.Now()
+	statusCode := http.StatusOK
+	defer func() {
+		httpRequestDuration.WithLabelValues(r.Method, "/sum").Observe(time.Since(start).Seconds())
+		httpRequestsTotal.WithLabelValues(r.Method, "/sum", strconv.Itoa(statusCode)).Inc()
+	}()
+
+	sleepDuration := time.Duration(rand.Float64() * 2 * float64(time.Second))
+	time.Sleep(sleepDuration)
 	// Create logger with request context
 	logger := slog.With(
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
+		slog.String("sleep", sleepDuration.String()),
 	)
 
 	logger.Info("request received")
@@ -62,7 +79,8 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
 		logger.Warn("method not allowed")
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		statusCode = http.StatusMethodNotAllowed
+		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Method not allowed"})
 		return
 	}
@@ -72,7 +90,8 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 
 	if aStr == "" || bStr == "" {
 		logger.Warn("missing parameters")
-		w.WriteHeader(http.StatusBadRequest)
+		statusCode = http.StatusBadRequest
+		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Parameters 'a' and 'b' are required"})
 		return
 	}
@@ -83,7 +102,8 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 			slog.String("param", "a"),
 			slog.String("value", aStr),
 		)
-		w.WriteHeader(http.StatusBadRequest)
+		statusCode = http.StatusBadRequest
+		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'a'"})
 		return
 	}
@@ -94,7 +114,8 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 			slog.String("param", "b"),
 			slog.String("value", bStr),
 		)
-		w.WriteHeader(http.StatusBadRequest)
+		statusCode = http.StatusBadRequest
+		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'b'"})
 		return
 	}
@@ -109,7 +130,8 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Warn("operation failed",
 			slog.String("error", err.Error()),
 		)
-		w.WriteHeader(http.StatusBadRequest)
+		statusCode = http.StatusBadRequest
+		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: err.Error()})
 		return
 	}
@@ -153,6 +175,7 @@ func main() {
 
 	http.HandleFunc("/sum", sumHandler)
 	http.HandleFunc("/health", healthHandler)
+	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
 	addr := ":8080"
 	server := &http.Server{
