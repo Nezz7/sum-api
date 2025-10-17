@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestAddSimple(t *testing.T) {
-	result, err := Add(2, 3)
+	result, err := Add(context.Background(), 2, 3)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -41,7 +42,7 @@ func TestAdd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := Add(tt.a, tt.b)
+			result, err := Add(context.Background(), tt.a, tt.b)
 			if tt.hasError {
 				if err == nil {
 					t.Errorf("Add(%d, %d) expected error but got none", tt.a, tt.b)
@@ -143,20 +144,23 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func BenchmarkAdd(b *testing.B) {
+	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		Add(123456789, 987654321)
+		Add(ctx, 123456789, 987654321)
 	}
 }
 
 func BenchmarkAddLargeNumbers(b *testing.B) {
+	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		Add(math.MaxInt64-1000, 500)
+		Add(ctx, math.MaxInt64-1000, 500)
 	}
 }
 
 func BenchmarkAddOverflow(b *testing.B) {
+	ctx := context.Background()
 	for i := 0; i < b.N; i++ {
-		Add(math.MaxInt64, 1)
+		Add(ctx, math.MaxInt64, 1)
 	}
 }
 

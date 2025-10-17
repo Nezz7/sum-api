@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type SumResponse struct {
@@ -46,7 +50,11 @@ func init() {
 	registry.MustRegister(httpRequestDuration)
 }
 
-func Add(a, b int64) (int64, error) {
+func Add(ctx context.Context, a, b int64) (int64, error) {
+	tracer := otel.Tracer("sum-api")
+	_, span := tracer.Start(ctx, "Add")
+	defer span.End()
+
 	if a > 0 && b > 0 && a > math.MaxInt64-b {
 		return 0, fmt.Errorf("integer overflow: %d + %d exceeds maximum value", a, b)
 	}
@@ -57,29 +65,41 @@ func Add(a, b int64) (int64, error) {
 }
 
 func sumHandler(w http.ResponseWriter, r *http.Request) {
+	tracer := otel.Tracer("sum-api")
+	ctx, span := tracer.Start(r.Context(), "sumHandler")
+
 	// Start timer for request duration
 	start := time.Now()
 	statusCode := http.StatusOK
 	defer func() {
 		httpRequestDuration.WithLabelValues(r.Method, "/sum").Observe(time.Since(start).Seconds())
 		httpRequestsTotal.WithLabelValues(r.Method, "/sum", strconv.Itoa(statusCode)).Inc()
+		span.SetAttributes(attribute.Int("http.status_code", statusCode))
+		span.End()
 	}()
 
 	sleepDuration := time.Duration(rand.Float64() * 2 * float64(time.Second))
 	time.Sleep(sleepDuration)
+
 	// Create logger with request context
 	logger := slog.With(
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
 		slog.String("sleep", sleepDuration.String()),
+		slog.String("trace_id", span.SpanContext().TraceID().String()),
 	)
 
 	logger.Info("request received")
+	span.SetAttributes(
+		attribute.String("http.method", r.Method),
+		attribute.String("http.path", r.URL.Path),
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
 		logger.Warn("method not allowed")
 		statusCode = http.StatusMethodNotAllowed
+		span.SetStatus(codes.Error, "Method not allowed")
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Method not allowed"})
 		return
@@ -91,6 +111,7 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 	if aStr == "" || bStr == "" {
 		logger.Warn("missing parameters")
 		statusCode = http.StatusBadRequest
+		span.SetStatus(codes.Error, "Missing parameters")
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Parameters 'a' and 'b' are required"})
 		return
@@ -103,6 +124,7 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 			slog.String("value", aStr),
 		)
 		statusCode = http.StatusBadRequest
+		span.SetStatus(codes.Error, "Invalid parameter 'a'")
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'a'"})
 		return
@@ -115,6 +137,7 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 			slog.String("value", bStr),
 		)
 		statusCode = http.StatusBadRequest
+		span.SetStatus(codes.Error, "Invalid parameter 'b'")
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(SumResponse{Error: "Invalid parameter 'b'"})
 		return
@@ -124,8 +147,12 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Int64("a", a),
 		slog.Int64("b", b),
 	)
+	span.SetAttributes(
+		attribute.Int64("sum.a", a),
+		attribute.Int64("sum.b", b),
+	)
 
-	result, err := Add(a, b)
+	result, err := Add(ctx, a, b)
 	if err != nil {
 		logger.Warn("operation failed",
 			slog.String("error", err.Error()),
@@ -136,6 +163,8 @@ func sumHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	span.SetAttributes(attribute.Int64("sum.result", result))
+	span.SetStatus(codes.Ok, "Success")
 	logger.Info("sum calculated",
 		slog.Int64("result", result),
 	)
@@ -148,6 +177,18 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize tracing
+	shutdown, err := InitTracer()
+	if err != nil {
+		slog.Error("failed to initialize tracer", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown tracer", slog.String("error", err.Error()))
+		}
+	}()
+
 	// Get log level from environment variable (default: INFO)
 	logLevel := slog.LevelInfo
 	if level := os.Getenv("LOG_LEVEL"); level != "" {
