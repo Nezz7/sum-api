@@ -39,6 +39,16 @@ var (
 		},
 		[]string{"method", "endpoint"},
 	)
+	example = prometheus.NewSummary(
+		prometheus.SummaryOpts{
+			Name: "example_summary",
+			Help: "help msg",
+			Objectives: map[float64]float64{
+				0.5: 0.1,
+				0.9: 0.01,
+			},
+		},
+	)
 )
 
 func init() {
