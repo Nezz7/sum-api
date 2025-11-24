@@ -18,10 +18,17 @@ clean:
 
 sast:
 	gosec ./...
-# 	gitleaks git -v
+# 	gitleaks git -v --log-opts=HEAD
 
 dast: 
 	docker run --rm ghcr.io/sullo/nikto -h http://host.docker.internal:8080
+
+zap:
+	docker run --rm -v $(PWD):/zap/wrk/:rw \
+		ghcr.io/zaproxy/zaproxy:stable \
+		zap-full-scan.py \
+		-t "http://host.docker.internal:8080/sum?a=5&b=3" \
+		-r fullscan.html
 
 lint:
 	go vet ./...
