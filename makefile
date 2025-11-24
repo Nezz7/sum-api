@@ -18,7 +18,7 @@ clean:
 
 sast:
 	gosec ./...
-# 	gitleaks git -v --log-opts=HEAD
+	gitleaks git -v --log-opts=HEAD
 
 dast: 
 	docker run --rm ghcr.io/sullo/nikto -h http://host.docker.internal:8080
