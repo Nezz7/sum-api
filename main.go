@@ -120,7 +120,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	http.HandleFunc("/sum", sumHandler)
 	http.HandleFunc("/health", healthHandler)
-
 	addr := ":8080"
 	server := &http.Server{
 		Addr:         addr,

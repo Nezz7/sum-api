@@ -13,7 +13,7 @@ func TestAddSimple(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
-	if result != 5 {
+	if result != 10 {
 		t.Errorf("Expected 5, got %d", result)
 	}
 }

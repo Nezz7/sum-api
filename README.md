@@ -24,6 +24,9 @@ make sast
 # Run DAST (Dynamic Application Security Testing)
 make dast
 
+# Run zap DAST
+make zap
+
 # Test API endpoints
 make curl
 
