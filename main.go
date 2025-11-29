@@ -118,6 +118,8 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	API_KEY := "tXPT/PA+1jbHCCQEvuQ6sfMGB9rx7S/T72TRufZZADI="
+	log.Println(API_KEY)
 	http.HandleFunc("/sum", sumHandler)
 	http.HandleFunc("/health", healthHandler)
 
