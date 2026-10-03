@@ -18,7 +18,8 @@ clean:
 
 sast:
 	gosec ./...
-# 	gitleaks git -v
+# gitleaks git -v --log-opts="HEAD"
+# gitleaks directory -v .
 
 dast: 
 	docker run --rm ghcr.io/sullo/nikto -h http://host.docker.internal:8080
@@ -31,6 +32,6 @@ lint:
 curl: 
 	curl http://localhost:8080/sum?a=5\&b=10
 	echo "\n"
-	curl http://localhost:8080/sum?a=5
+	curl -v http://localhost:8080/sum?a=5
 	echo "\n"
 	curl http://localhost:8080/sum?a=9223372036854775807\&b=100
