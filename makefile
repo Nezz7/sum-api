@@ -17,8 +17,14 @@ clean:
 	rm -rf bin/app
 
 pre-commit:
-	$(MAKE) lint
-	$(MAKE) test
+	@echo "Running lint..."
+	go vet ./...
+	go fmt ./...
+
+	@echo "Running tests..."
+	@go test ./...
+
+	@echo "All pre-commit checks passed!"
 
 sast:
 	gosec ./...
