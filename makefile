@@ -1,4 +1,4 @@
-.PHONY: run build test clean
+.PHONY: run build test clean pre-commit
 
 run: 
 	go run main.go
@@ -15,6 +15,16 @@ coverage:
 
 clean:
 	rm -rf bin/app
+
+pre-commit:
+	@echo "Running lint..."
+	go vet ./...
+	go fmt ./...
+
+	@echo "Running tests..."
+	@go test ./...
+
+	@echo "All pre-commit checks passed!"
 
 sast:
 	gosec ./...
