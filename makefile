@@ -1,4 +1,4 @@
-.PHONY: run build test clean
+.PHONY: run build test clean pre-commit
 
 run: 
 	go run main.go
@@ -15,6 +15,10 @@ coverage:
 
 clean:
 	rm -rf bin/app
+
+pre-commit:
+	$(MAKE) lint
+	$(MAKE) test
 
 sast:
 	gosec ./...
