@@ -22,7 +22,7 @@ jobs:
         go-version: '1.25'
     
     - name: Run Gosec Security Scanner
-      uses: securego/gosec@v2
+      uses: securego/gosec@master
 
     - name: Test
       run: make test
