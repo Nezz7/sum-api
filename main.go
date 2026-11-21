@@ -50,7 +50,6 @@ func Add(a, b int64) (int64, error) {
 }
 
 func sumHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received request:", r.Method, r.URL.Path, r.URL.RawQuery)
 
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
